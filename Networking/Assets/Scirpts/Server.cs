@@ -2,6 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
+
+// TO DO:
+// - When impleting networking, set "localActivePlayer" from "Client" to 0 or 1, depending on order at which players join the server 
+
 public class Server
 {
     List<CardData> deck = new List<CardData>();
@@ -9,9 +13,12 @@ public class Server
     List<CardData> player1Cards = new List<CardData>();
     List<CardData> player2Cards = new List<CardData>();
 
+    CardData firstPlayedCard;
+    CardData secondPlayedCard;
+
     private Random random = new Random();
 
-    int startPlayer;
+    int activePlayer;
     CardData trumpCard;
 
     public void StartGame()
@@ -85,12 +92,12 @@ public class Server
 
     void DealCardsMain()
     {
-        startPlayer = random.Next(2);
+        activePlayer = random.Next(2);
 
         for (int dealRound = 0; dealRound < 2; dealRound++)
         {
-            DealCardsToPlayer(startPlayer);
-            DealCardsToPlayer(1 - startPlayer); 
+            DealCardsToPlayer(activePlayer);
+            DealCardsToPlayer(1 - activePlayer); 
         }
 
         trumpCard = deck[deck.Count - 1];
@@ -115,5 +122,59 @@ public class Server
     private CardData CreateCard(Suit suit, Rank rank, int points, int power, int cardId)
     {
         return new CardData(suit, rank, points, power, cardId);
+    }
+
+    public bool PlayCard(int playerId, int cardId)
+    {
+        if (playerId != activePlayer) 
+            return false;
+
+        List<CardData> hand = (playerId == 0) ? player1Cards : player2Cards;
+
+        CardData card = hand.Find(c  => c.cardId == cardId);
+
+        if (card == null)
+            return false;
+    
+        hand.Remove(card);
+
+        if (firstPlayedCard == null)
+        {
+            firstPlayedCard = card;
+            activePlayer = 1 - activePlayer;
+        }
+
+        else
+        {
+            secondPlayedCard = card;
+            activePlayer = 1 - activePlayer;
+        }
+
+        return true;
+    }
+
+    public List<CardData> GetPlayerHand(int playerId)
+    {
+        return (playerId == 0) ? player1Cards : player2Cards;
+    }
+
+    public int GetActivePlayer()
+    {
+        return activePlayer;
+    }
+
+    public void DrawCard()
+    {
+        if (activePlayer == 0)
+        {
+            player1Cards.Add(deck[deck.Count - 1]);
+            deck.RemoveAt(deck.Count - 1);
+        }
+
+        else
+        {
+            player2Cards.Add(deck[deck.Count - 1]);
+            deck.RemoveAt(deck.Count - 1);
+        }
     }
 }

@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class UnityServer : MonoBehaviour
 {
-    private Server server;
+    public Server server;
 
     // Start is called once before the first execution of Update after the MonoBehaviour is created
     void Start()
