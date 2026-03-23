@@ -2,9 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
-
 // TO DO:
 // - When impleting networking, set "localActivePlayer" from "Client" to 0 or 1, depending on order at which players join the server 
+
+
+enum TurnPhase
+{
+    WaitingFirstCard,
+    WaitingSecondCard,
+    Drawing
+}
 
 public class Server
 {
@@ -19,13 +26,20 @@ public class Server
     private Random random = new Random();
 
     int activePlayer;
+    TurnPhase turnPhase;
+    int playersDrawn;
+
     CardData trumpCard;
+
+    int trickLeader;
 
     public void StartGame()
     {
         CreateDeck();
         ShuffleDeck();
         DealCardsMain();
+
+        turnPhase = TurnPhase.WaitingFirstCard;
 
         /*foreach (Suit suit in Enum.GetValues(typeof(Suit)))
         {
@@ -77,6 +91,11 @@ public class Server
         }
     }
 
+    private CardData CreateCard(Suit suit, Rank rank, int points, int power, int cardId)
+    {
+        return new CardData(suit, rank, points, power, cardId);
+    }
+
     void ShuffleDeck()
     {
         int deckSize = deck.Count;
@@ -103,6 +122,19 @@ public class Server
         trumpCard = deck[deck.Count - 1];
         deck.RemoveAt(deck.Count - 1);
         deck.Insert(0, trumpCard);
+
+        TrumpCardPower(deck);
+        TrumpCardPower(player1Cards);
+        TrumpCardPower(player2Cards);
+    }
+
+    void TrumpCardPower(IEnumerable<CardData> cards)
+    {
+        foreach (CardData card in cards)
+        {
+            if (card.suit == trumpCard.suit)
+                card.power += 6;
+        }
     }
 
     void DealCardsToPlayer(int playerIndex)
@@ -119,13 +151,11 @@ public class Server
         }
     }
 
-    private CardData CreateCard(Suit suit, Rank rank, int points, int power, int cardId)
-    {
-        return new CardData(suit, rank, points, power, cardId);
-    }
-
     public bool PlayCard(int playerId, int cardId)
     {
+        if (turnPhase == TurnPhase.Drawing)
+            return false;   
+
         if (playerId != activePlayer) 
             return false;
 
@@ -135,22 +165,74 @@ public class Server
 
         if (card == null)
             return false;
-    
+
         hand.Remove(card);
 
-        if (firstPlayedCard == null)
+        if (turnPhase == TurnPhase.WaitingFirstCard)
         {
             firstPlayedCard = card;
+            trickLeader = playerId;
+
             activePlayer = 1 - activePlayer;
+            turnPhase = TurnPhase.WaitingSecondCard;
+        }
+
+        else if (turnPhase == TurnPhase.WaitingSecondCard)
+        {
+            secondPlayedCard = card;
+
+            int trickWinner = TrickWinner();
+
+            activePlayer = trickWinner;
+            turnPhase = TurnPhase.Drawing;
+        }
+
+        return true;
+    }
+
+    int TrickWinner()
+    {
+        if (firstPlayedCard.power > secondPlayedCard.power)
+            return trickLeader;
+
+        if (secondPlayedCard.power > firstPlayedCard.power)
+            return 1 - trickLeader;
+
+        return trickLeader;
+    }
+
+    public void DrawCard()
+    {
+        if (turnPhase != TurnPhase.Drawing)
+            return;
+
+        if (deck.Count == 0)
+            return;
+
+        if (activePlayer == 0)
+        {
+            player1Cards.Add(deck[deck.Count - 1]);
         }
 
         else
         {
-            secondPlayedCard = card;
-            activePlayer = 1 - activePlayer;
+            player2Cards.Add(deck[deck.Count - 1]);
         }
 
-        return true;
+        deck.RemoveAt(deck.Count - 1);
+
+        playersDrawn++;
+        activePlayer = 1 - activePlayer;
+
+        if (playersDrawn == 2)
+        {
+            firstPlayedCard = null;
+            secondPlayedCard = null;
+
+            playersDrawn = 0;
+
+            turnPhase = TurnPhase.WaitingFirstCard;
+        }
     }
 
     public List<CardData> GetPlayerHand(int playerId)
@@ -161,20 +243,5 @@ public class Server
     public int GetActivePlayer()
     {
         return activePlayer;
-    }
-
-    public void DrawCard()
-    {
-        if (activePlayer == 0)
-        {
-            player1Cards.Add(deck[deck.Count - 1]);
-            deck.RemoveAt(deck.Count - 1);
-        }
-
-        else
-        {
-            player2Cards.Add(deck[deck.Count - 1]);
-            deck.RemoveAt(deck.Count - 1);
-        }
     }
 }
