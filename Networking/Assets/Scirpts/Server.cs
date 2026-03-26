@@ -5,7 +5,6 @@ using System.Diagnostics;
 // TO DO:
 // - When impleting networking, set "localActivePlayer" from "Client" to 0 or 1, depending on order at which players join the server 
 
-
 enum TurnPhase
 {
     WaitingFirstCard,
@@ -29,9 +28,20 @@ public class Server
     TurnPhase turnPhase;
     int playersDrawn;
 
-    CardData trumpCard;
+    public CardData trumpCard;
 
     int trickLeader;
+
+    int player1Score;
+    int player2Score;
+
+    List<CardData> player1TakenCards = new List<CardData>();
+    List<CardData> player2TakenCards = new List<CardData>();
+
+    bool canDrawCards = true;
+
+    bool marriageDeclaredThisTurn = false;
+    Suit marriageSuit;
 
     public void StartGame()
     {
@@ -170,6 +180,15 @@ public class Server
 
         if (turnPhase == TurnPhase.WaitingFirstCard)
         {
+            if (marriageDeclaredThisTurn)
+            {
+                bool validCards = card.suit == marriageSuit && (card.rank == Rank.King || card.rank == Rank.Queen);
+
+                if (!validCards)
+                    return false;
+            }
+
+
             firstPlayedCard = card;
             trickLeader = playerId;
 
@@ -183,7 +202,11 @@ public class Server
 
             int trickWinner = TrickWinner();
 
+            AwardPoints(trickWinner);
+
             activePlayer = trickWinner;
+
+            //Logic to stop changing the phase to drawing
             turnPhase = TurnPhase.Drawing;
         }
 
@@ -201,13 +224,23 @@ public class Server
         return trickLeader;
     }
 
-    public void DrawCard()
+    public void DrawCard() //change to a bool ?! 
     {
         if (turnPhase != TurnPhase.Drawing)
             return;
 
+        if (!canDrawCards)
+        {
+            playersDrawn++;
+            activePlayer =1 - activePlayer;
+            if (playersDrawn == 2)
+                StartNextTurn();
+
+            //return true;
+        }
+
         if (deck.Count == 0)
-            return;
+            return /*false*/;
 
         if (activePlayer == 0)
         {
@@ -226,13 +259,22 @@ public class Server
 
         if (playersDrawn == 2)
         {
-            firstPlayedCard = null;
-            secondPlayedCard = null;
-
-            playersDrawn = 0;
-
-            turnPhase = TurnPhase.WaitingFirstCard;
+            StartNextTurn();
         }
+
+        /*return true;*/
+    }
+
+    void StartNextTurn()
+    {
+        firstPlayedCard = null;
+        secondPlayedCard = null;
+
+        playersDrawn = 0;
+
+        marriageDeclaredThisTurn = false;
+
+        turnPhase = TurnPhase.WaitingFirstCard;
     }
 
     public List<CardData> GetPlayerHand(int playerId)
@@ -243,5 +285,87 @@ public class Server
     public int GetActivePlayer()
     {
         return activePlayer;
+    }
+
+    void AwardPoints(int winner)
+    {
+        int points = firstPlayedCard.points + secondPlayedCard.points;
+        if (winner == 0)
+        {
+            player1Score += points;
+            player1TakenCards.Add(firstPlayedCard);
+            player1TakenCards.Add(secondPlayedCard);
+        }
+
+        else
+        {
+            player2Score += points;
+            player2TakenCards.Add(firstPlayedCard);
+            player2TakenCards.Add(secondPlayedCard);
+        }
+
+        Debug.WriteLine($"{points} points awarded to Player {winner + 1}");
+    }
+
+    public int GetPoints(int playerId)
+    {
+        return (playerId == 0) ? player1Score : player2Score;
+    }
+
+    void DeclareMarriage(int playerId, Suit suit)
+    {
+        if (!CanMarriage(playerId))
+            return;
+
+        List<CardData> hand = GetPlayerHand(playerId);
+
+        bool hasKing = hand.Exists(c => c.rank == Rank.King && c.suit == suit);
+        bool hasQueen = hand.Exists(c => c.rank == Rank.Queen && c.suit == suit);
+
+        if (!hasKing || !hasQueen)
+            return;
+
+        int points = (suit != trumpCard.suit) ? 20 : 40;
+
+        if (playerId == 0)
+            player1Score += points;
+        else
+            player2Score += points;
+
+        marriageDeclaredThisTurn = true;
+        marriageSuit = suit;
+    }
+
+    bool CanMarriage(int playerId)
+    {
+        if (turnPhase != TurnPhase.WaitingFirstCard)
+            return false;
+
+        if (playerId != activePlayer)
+            return false;
+
+        List<CardData> hand = GetPlayerHand(playerId);
+
+        foreach (Suit suit in Enum.GetValues(typeof(Suit)))
+        {
+            bool hasKing = hand.Exists(c => c.rank == Rank.King && c.suit == suit);
+            bool hasQueen = hand.Exists(c => c.rank == Rank.Queen && c.suit == suit);
+
+            if (hasKing && hasQueen)
+                return true;
+        }
+
+        return false;
+    }
+
+    public void CloseDrawingDeck(int playerId)
+    {
+        if (turnPhase != TurnPhase.WaitingFirstCard)
+            return;
+
+        if (playerId != activePlayer)
+            return;
+
+        canDrawCards = false; 
     }
 }

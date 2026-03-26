@@ -26,6 +26,17 @@ public class Client : MonoBehaviour
         }
         GUI.EndGroup();
 
+        GUI.BeginGroup(new Rect(30, 90, 200, 200));
+        GUILayout.Label($"Trump Suit is: {unityServer.server.trumpCard.suit}");
+
+        GUI.EndGroup();
+
+        GUI.BeginGroup(new Rect(30, 120, 200, 200));
+        if (GUILayout.Button($"Close the deck"))
+            unityServer.server.CloseDrawingDeck(localActivePlayer);
+
+        GUI.EndGroup();
+
         GUI.BeginGroup(new Rect(750, 800, 1000, 1000));
         GUILayout.Label($"Player {localActivePlayer + 1}'s hand: ");
 
