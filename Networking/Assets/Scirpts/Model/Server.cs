@@ -4,7 +4,6 @@ using System.Diagnostics;
 
 // TO DO:
 // - When impleting networking, set "localActivePlayer" from "Client" to 0 or 1, depending on order at which players join the server 
-// - Add punishment for spaming "Call Marraige" and "Declare 66"
 // - After all cards are played declare a winner 
 // - Add a way to keep track of wins
 
@@ -43,6 +42,12 @@ public class Server
     private List<CardData> player2TakenCards = new List<CardData>();
     private int player1Score;
     private int player2Score;
+
+    private int player1SessionScore = 0;
+    private int player2SessionScore = 0;
+    private int sessionMaxScore = 5;
+    private bool deckClosedByPlayer = false;
+    private int closingPlayer = -1;
     #endregion
 
     #region Actions
@@ -53,6 +58,9 @@ public class Server
     public event Action<int> OnTurnChanged;
     public event Action<int> OnTrumpExchanged;
     public event Action<int> OnTrumpTaken;
+    public event Action<int> OnRoundEnd;
+    public event Action<int, int> OnSessionScoreUpdate;
+    public event Action<int> OnSessionEnd;
 
     public event Action<string> OnActionRejected;
     #endregion
@@ -102,7 +110,8 @@ public class Server
         Debug.WriteLine($"{deck.Count}");*/
     }
 
-    void CreateDeck()
+    #region StartGame
+    private void CreateDeck()
     {
         int id = 0;
 
@@ -117,14 +126,10 @@ public class Server
         }
     }
 
-    private CardData CreateCard(Suit suit, Rank rank, int points, int power, int cardId)
-    {
-        return new CardData(suit, rank, points, power, cardId);
-    }
-
-    void ShuffleDeck()
+    private void ShuffleDeck()
     {
         int deckSize = deck.Count;
+
         while (deckSize > 1)
         {
             deckSize--;
@@ -135,14 +140,14 @@ public class Server
         }
     }
 
-    void DealCardsMain()
+    private void DealCardsMain()
     {
         activePlayer = random.Next(2);
 
         for (int dealRound = 0; dealRound < 2; dealRound++)
         {
             DealCardsToPlayer(activePlayer);
-            DealCardsToPlayer(1 - activePlayer); 
+            DealCardsToPlayer(1 - activePlayer);
         }
 
         trumpCard = deck[deck.Count - 1];
@@ -154,7 +159,7 @@ public class Server
         TrumpCardPower(player2Cards);
     }
 
-    void TrumpCardPower(IEnumerable<CardData> cards)
+    private void TrumpCardPower(IEnumerable<CardData> cards)
     {
         foreach (CardData card in cards)
         {
@@ -163,7 +168,7 @@ public class Server
         }
     }
 
-    void DealCardsToPlayer(int playerIndex)
+    private void DealCardsToPlayer(int playerIndex)
     {
         for (int i = 0; i < 3; i++)
         {
@@ -175,6 +180,57 @@ public class Server
             else
                 player2Cards.Add(cardData);
         }
+    }
+
+    private CardData CreateCard(Suit suit, Rank rank, int points, int power, int cardId)
+    {
+        return new CardData(suit, rank, points, power, cardId);
+    }
+
+    #endregion
+
+    #region Play Actions
+    public void DrawCard()
+    {
+        if (turnPhase != TurnPhase.Drawing)
+        {
+            OnActionRejected?.Invoke("You cannot draw a card. It is not your turn.");
+            return;
+        }
+
+        if (!canDrawCards)
+        {
+            playersDrawn++;
+            activePlayer = 1 - activePlayer;
+            OnTurnChanged?.Invoke(activePlayer);
+
+            if (playersDrawn == 2)
+                StartNextTurn();
+
+            if (deck.Count > 0)
+                OnActionRejected?.Invoke("You cannot draw a card. The deck is closed.");
+
+            else
+                OnActionRejected?.Invoke("You cannot draw a card. The deck is empty.");
+
+            return;
+        }
+
+        if (activePlayer == 0)
+            player1Cards.Add(deck[deck.Count - 1]);
+
+        else
+            player2Cards.Add(deck[deck.Count - 1]);
+
+        deck.RemoveAt(deck.Count - 1);
+        OnCardDrawn?.Invoke(activePlayer);
+
+        playersDrawn++;
+        activePlayer = 1 - activePlayer;
+        OnTurnChanged?.Invoke(activePlayer);
+
+        if (playersDrawn == 2)
+            StartNextTurn();
     }
 
     public void PlayCard(int playerId, int cardId)
@@ -264,114 +320,7 @@ public class Server
         hand.Remove(card);
 
         OnCardPlayed?.Invoke(playerId, cardId);
-    }
-
-    int TrickWinner()
-    {
-        if (firstPlayedCard.power > secondPlayedCard.power)
-            return trickLeader;
-
-        if (secondPlayedCard.power > firstPlayedCard.power)
-            return 1 - trickLeader;
-
-        return trickLeader;
-    }
-
-    public void DrawCard()
-    {
-        if (turnPhase != TurnPhase.Drawing)
-        {
-            OnActionRejected?.Invoke("You cannot draw a card. It is not your turn.");
-            return;
-        }
-
-        if (!canDrawCards)
-        {
-            playersDrawn++;
-            activePlayer = 1 - activePlayer;
-            OnTurnChanged?.Invoke(activePlayer);
-            if (playersDrawn == 2)
-                StartNextTurn();
-
-            OnActionRejected?.Invoke("You cannot draw a card. The pile is closed");
-            return;
-        }
-
-        if (deck.Count == 0)
-        {
-            OnActionRejected?.Invoke("There are no more cards to draw. The pile is empty.");
-            return;
-        }
-
-        if (activePlayer == 0)
-        {
-            player1Cards.Add(deck[deck.Count - 1]);
-        }
-
-        else
-        {
-            player2Cards.Add(deck[deck.Count - 1]);
-        }
-
-        deck.RemoveAt(deck.Count - 1);
-        OnCardDrawn?.Invoke(activePlayer);
-
-        playersDrawn++;
-        activePlayer = 1 - activePlayer;
-        OnTurnChanged?.Invoke(activePlayer);
-
-        if (playersDrawn == 2)
-        {
-            StartNextTurn();
-        }
-    }
-
-    void StartNextTurn()
-    {
-        firstPlayedCard = null;
-        secondPlayedCard = null;
-
-        playersDrawn = 0;
-
-        marriageDeclaredThisTurn = false;
-
-        turnPhase = TurnPhase.WaitingFirstCard;
-        OnTurnChanged?.Invoke(activePlayer);
-    }
-
-    public List<CardData> GetPlayerHand(int playerId)
-    {
-        return (playerId == 0) ? player1Cards : player2Cards;
-    }
-
-    public int GetActivePlayer()
-    {
-        return activePlayer;
-    }
-
-    void AwardPoints(int winner)
-    {
-        int points = firstPlayedCard.points + secondPlayedCard.points;
-        if (winner == 0)
-        {
-            player1Score += points;
-            player1TakenCards.Add(firstPlayedCard);
-            player1TakenCards.Add(secondPlayedCard);
-        }
-
-        else
-        {
-            player2Score += points;
-            player2TakenCards.Add(firstPlayedCard);
-            player2TakenCards.Add(secondPlayedCard);
-        }
-
-        Debug.WriteLine($"{points} points awarded to Player {winner + 1}");
-    }
-
-    public int GetPoints(int playerId)
-    {
-        return (playerId == 0) ? player1Score : player2Score;
+        CheckGameEnd();
     }
 
     public void DeclareMarriage(int playerId, Suit suit)
@@ -387,7 +336,7 @@ public class Server
         bool hasKing = hand.Exists(c => c.rank == Rank.King && c.suit == suit);
         bool hasQueen = hand.Exists(c => c.rank == Rank.Queen && c.suit == suit);
 
-        if (!hasKing || !hasQueen)
+        if (!HasMarriage(hand, suit))
             return;
 
         int points = (suit != trumpCard.suit) ? 20 : 40;
@@ -399,7 +348,7 @@ public class Server
 
         marriageDeclaredThisTurn = true;
         marriageSuit = suit;
-        OnMarriageDeclared?.Invoke(playerId, suit); 
+        OnMarriageDeclared?.Invoke(playerId, suit);
 
         Debug.WriteLine($"{points} points awarded to Player {playerId + 1} for marraige");
     }
@@ -416,38 +365,11 @@ public class Server
 
         foreach (Suit suit in Enum.GetValues(typeof(Suit)))
         {
-            bool hasKing = hand.Exists(c => c.rank == Rank.King && c.suit == suit);
-            bool hasQueen = hand.Exists(c => c.rank == Rank.Queen && c.suit == suit);
-
-            if (hasKing && hasQueen)
+            if (HasMarriage(hand, suit))
                 return true;
         }
 
         return false;
-    }
-
-    public List<Suit> GetAvailableMarriages(int playerId)
-    {
-        List<Suit> result = new List<Suit>();
-
-        if (turnPhase != TurnPhase.WaitingFirstCard)
-            return result;
-
-        if (playerId != activePlayer)
-            return result;
-
-        List<CardData> hand = GetPlayerHand(playerId);
-
-        foreach (Suit suit in Enum.GetValues(typeof(Suit)))
-        {
-            bool hasKing = hand.Exists(c => c.rank == Rank.King && c.suit == suit);
-            bool hasQueen = hand.Exists(c => c.rank == Rank.Queen && c.suit == suit);
-
-            if (hasKing && hasQueen)
-                result.Add(suit);
-        }
-
-        return result;
     }
 
     public void CloseDrawingDeck(int playerId)
@@ -456,7 +378,7 @@ public class Server
             return;
 
         if (playerId != activePlayer)
-            return;
+            return;  
 
         if (deck.Count <= 2)
         {
@@ -465,35 +387,16 @@ public class Server
         }
 
         canDrawCards = false;
+        deckClosedByPlayer = true;
+        closingPlayer = playerId;
         OnDeckClosed?.Invoke(playerId);
-    }
-
-    bool HasSuit(List<CardData> hand, Suit suit)
-    {
-        return hand.Exists(c => c.suit == suit);
-    }
-
-    bool HasTrump(List<CardData> hand)
-    {
-        return hand.Exists(c => c.suit == trumpCard.suit);
-    }
-
-    public int GetDeckCount()
-    {
-        return deck.Count;
     }
 
     public void ExchangeTrump(int playerId)
     {
         if (turnPhase != TurnPhase.WaitingFirstCard)
         {
-            OnActionRejected?.Invoke("You can exchange the trump card.");
-            return;
-        }
-
-        if (!canDrawCards)
-        {
-            OnActionRejected?.Invoke("Cannot exchange the trump card when the deck is closed.");
+            OnActionRejected?.Invoke("You can't exchange the trump card.");
             return;
         }
 
@@ -506,6 +409,12 @@ public class Server
         if (deck.Count <= 2)
         {
             OnActionRejected?.Invoke("Not enough cards to exchange the trump card.");
+            return;
+        }
+
+        if (!canDrawCards)
+        {
+            OnActionRejected?.Invoke("Cannot exchange the trump card when the deck is closed.");
             return;
         }
 
@@ -545,13 +454,252 @@ public class Server
 
         hand.Add(trumpCard);
 
-        deck.Clear(); 
+        deck.Clear();
 
         OnTrumpTaken?.Invoke(playerId);
+    }
+
+    #endregion
+
+    #region ServerCalculations
+    private int TrickWinner()
+    {
+        if (firstPlayedCard.power > secondPlayedCard.power)
+            return trickLeader;
+
+        if (secondPlayedCard.power > firstPlayedCard.power)
+            return 1 - trickLeader;
+
+        return trickLeader;
+    }
+
+    private void AwardPoints(int winner)
+    {
+        int points = firstPlayedCard.points + secondPlayedCard.points;
+        if (winner == 0)
+        {
+            player1Score += points;
+            player1TakenCards.Add(firstPlayedCard);
+            player1TakenCards.Add(secondPlayedCard);
+        }
+
+        else
+        {
+            player2Score += points;
+            player2TakenCards.Add(firstPlayedCard);
+            player2TakenCards.Add(secondPlayedCard);
+        }
+
+        Debug.WriteLine($"{points} points awarded to Player {winner + 1}");
+    }
+
+    private void StartNextTurn()
+    {
+        firstPlayedCard = null;
+        secondPlayedCard = null;
+
+        playersDrawn = 0;
+
+        marriageDeclaredThisTurn = false;
+
+        turnPhase = TurnPhase.WaitingFirstCard;
+        OnTurnChanged?.Invoke(activePlayer);
+    }
+
+    private void CheckGameEnd()
+    {
+        bool emptyHands = player1Cards.Count == 0 && player2Cards.Count == 0;
+
+        if (!emptyHands)
+            return;
+
+        int roundWinner = RoundWinner();
+        SessionPoints(roundWinner);
+        OnRoundEnd?.Invoke(roundWinner);
+        CheckSessionEnd();
+        Reset();
+    }
+
+    public void ForceRoundEnd(int playerId)
+    {
+        if (GetPoints(playerId) < 66)
+        {
+            OnActionRejected?.Invoke("You do not have 66 points.");
+            return;
+        }
+
+        SessionPoints(playerId);
+        OnRoundEnd?.Invoke(playerId);
+        CheckSessionEnd();
+        Reset();
+    }
+
+    private void SessionPoints(int winner)
+    {
+        int loser = 1 - winner;
+
+        int loserScore = GetPoints(loser);
+        int points = 1;
+
+        bool loserHasTakenCards = GetTakenCards(loser).Count > 0;
+
+        if (deckClosedByPlayer)
+        {
+            int score = GetPoints(closingPlayer);
+
+            if (score < 66)
+                points = 3;
+
+            else
+                points = CalculatePoints(loserScore, loserHasTakenCards);
+        }
+
+        else
+            points = CalculatePoints(loserScore, loserHasTakenCards);
+
+        if (winner == 0)
+            player1SessionScore += points;
+        
+        else
+            player2SessionScore += points;
+
+        OnSessionScoreUpdate?.Invoke(player1SessionScore, player2SessionScore);
+    }
+
+    #endregion
+
+    #region SendingInformation
+    public int GetActivePlayer()
+    {
+        return activePlayer;
+    }
+
+    public int GetPoints(int playerId)
+    {
+        return (playerId == 0) ? player1Score : player2Score;
+    }
+
+    public int GetDeckCount()
+    {
+        return deck.Count;
+    }
+
+    public List<CardData> GetPlayerHand(int playerId)
+    {
+        return (playerId == 0) ? player1Cards : player2Cards;
     }
 
     public List<CardData> GetTakenCards(int playerId)
     {
         return playerId == 0 ? player1TakenCards : player2TakenCards;
     }
+
+    public List<Suit> GetAvailableMarriages(int playerId)
+    {
+        List<Suit> result = new List<Suit>();
+
+        if (turnPhase != TurnPhase.WaitingFirstCard)
+            return result;
+
+        if (playerId != activePlayer)
+            return result;
+
+        List<CardData> hand = GetPlayerHand(playerId);
+
+        foreach (Suit suit in Enum.GetValues(typeof(Suit)))
+        { 
+            if (HasMarriage(hand, suit))
+                result.Add(suit);
+        }
+
+        return result;
+    }
+
+    private bool HasSuit(List<CardData> hand, Suit suit)
+    {
+        return hand.Exists(c => c.suit == suit);
+    }
+
+    private bool HasTrump(List<CardData> hand)
+    {
+        return hand.Exists(c => c.suit == trumpCard.suit);
+    }
+
+    private bool HasMarriage(List<CardData> hand, Suit suit)
+    {
+        bool hasKing = hand.Exists(c => c.rank == Rank.King && c.suit == suit);
+        bool hasQueen = hand.Exists(c => c.rank == Rank.Queen && c.suit == suit);
+
+        return hasKing && hasQueen;
+    }
+
+    private int RoundWinner()
+    {
+        if (deckClosedByPlayer)
+        {
+            int score = GetPoints(closingPlayer);
+
+            if (score > 66)
+            {
+                return closingPlayer;
+            }
+
+            else
+                return 1 - closingPlayer;
+        }
+
+        if (player1Score >= 66)
+            return 0;
+        
+        if (player2Score >= 66)
+            return 1;
+
+        return (player1Score > player2Score) ? 0 : 1;
+    }
+
+    private int CalculatePoints(int loserScore, bool loserHasTakenCards)
+    {
+        if (!loserHasTakenCards)
+            return 3;
+
+        if (loserScore < 33)
+            return 2;
+
+        return 1;
+    }
+
+    private void CheckSessionEnd()
+    {
+        if (player1SessionScore >= sessionMaxScore)
+            OnSessionEnd?.Invoke(0);
+
+        else if (player2SessionScore >= sessionMaxScore)
+            OnSessionEnd?.Invoke(1);
+    }
+
+    private void Reset()
+    {
+        player1Cards.Clear();
+        player2Cards.Clear();
+        player1TakenCards.Clear();
+        player2TakenCards.Clear();
+
+        player1Score = 0;
+        player2Score = 0;
+
+        deck.Clear();
+
+        canDrawCards = true;
+        deckClosedByPlayer = false;
+        closingPlayer = -1;
+
+        StartGame();
+    }
+
+    public void SendSessionScore()
+    {
+        OnSessionScoreUpdate?.Invoke(player1SessionScore, player2SessionScore);
+    }
+
+    #endregion
 }

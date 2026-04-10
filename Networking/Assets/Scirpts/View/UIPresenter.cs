@@ -5,6 +5,7 @@ using UnityEngine.UI;
 
 public class UIPresenter : MonoBehaviour
 {
+    #region UI
     [SerializeField] private Button drawButton;
     [SerializeField] private GameObject drawPileClosed;
     [SerializeField] private Button closeDeckButton;
@@ -17,16 +18,26 @@ public class UIPresenter : MonoBehaviour
     [SerializeField] private TextMeshProUGUI remainingCardsText;
     [SerializeField] private TextMeshProUGUI marriageText;
 
+    [SerializeField] private TextMeshProUGUI currentPlayerText;
+    [SerializeField] private TextMeshProUGUI scoreText;
+    [SerializeField] private GameObject endRoundPanel;
+    [SerializeField] private TextMeshProUGUI endRoundText;
+
+    #endregion
+
     [SerializeField] private CardImageDatabase imageDatabase;
 
     [SerializeField] private GameObject takenCardsPanel;
 
+    #region Actions
     public Action OnDrawPressed;
     public Action OnCloseDeckPressed;
     public Action OnWinDeclared;
     public Action OnMarriagePressed;
     public Action ShowTakenCards;
     public Action OnTrumpPressed;
+
+    #endregion
 
     private void Awake()
     {
@@ -71,5 +82,26 @@ public class UIPresenter : MonoBehaviour
     public void ShowTakenCardsView(bool show)
     {
         takenCardsPanel.SetActive(show);
+    }
+
+    public void SetTurnText(int playerId)
+    {
+        currentPlayerText.text = $"Player {playerId + 1} Turn. \n You are player {playerId + 1}";
+    }
+
+    public void SetScore(int p1, int p2)
+    {
+        scoreText.text = $"{p1} : {p2}";
+    }
+
+    public void ShowRoundEnd(int winner)
+    {
+        endRoundPanel.SetActive(true);
+        endRoundText.text = $"Player {winner + 1} Wins!";
+    }
+
+    public void HideRoundEnd()
+    {
+        endRoundPanel.SetActive(false);
     }
 }

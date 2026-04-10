@@ -14,9 +14,37 @@ public class PlayerHandPresenter : MonoBehaviour
     public Action<int> OnCardPlayed;
 
     private bool interactable = true;
-    //public System.Action OnDrawPressed;
-    //public System.Action OnCloseDeckPressed;
-    //public System.Action<Suit> OnMarriagePressed;
+
+    GameObject CardUI(int cardId, bool isOpponent)
+    {
+        GameObject cardUI = Instantiate(cardPrefab, content);
+        spawnedCards.Add(cardUI);
+
+        CardImage view = cardUI.GetComponent<CardImage>();
+
+        if (isOpponent)
+        {
+            Sprite backImage = imageDatabase.GetImage(imageDatabase.cardImages.Count - 1);
+            view.SetCardImage(-1, backImage);
+        }
+
+        else
+        {
+            Sprite frontImage = imageDatabase.GetImage(cardId);
+            view.SetCardImage(cardId, frontImage);
+        }
+
+        Button button = cardUI.GetComponent<Button>();
+        button.interactable = interactable && !isOpponent;
+
+        if (button.interactable)
+        {
+            int takenCardsId = cardId;
+            button.onClick.AddListener(() => OnCardPlayed?.Invoke(takenCardsId));
+        }
+
+        return cardUI;
+    }
 
     public void UpdateHand(List<CardData> hand)
     {
@@ -24,7 +52,7 @@ public class PlayerHandPresenter : MonoBehaviour
 
         foreach (CardData card in hand)
         {
-            GameObject cardUI = Instantiate(cardPrefab, content);
+            /*GameObject cardUI = Instantiate(cardPrefab, content);
             spawnedCards.Add(cardUI);
 
             CardImage view = cardUI.GetComponent<CardImage>();
@@ -39,7 +67,8 @@ public class PlayerHandPresenter : MonoBehaviour
             if (interactable)
             {
                 button.onClick.AddListener(() => { OnCardPlayed?.Invoke(id); });
-            }
+            }*/
+            CardUI(card.cardId, false);
         }
     }
 
@@ -49,7 +78,7 @@ public class PlayerHandPresenter : MonoBehaviour
 
         for (int i = 0; i < opponentCount; i++)
         {
-            GameObject cardUI = Instantiate(cardPrefab, content);
+            /*GameObject cardUI = Instantiate(cardPrefab, content);
             spawnedCards.Add(cardUI);
 
             CardImage view = cardUI.GetComponent<CardImage>();
@@ -57,7 +86,8 @@ public class PlayerHandPresenter : MonoBehaviour
             view.SetCardImage(-1, cardImage);
 
             Button button = cardUI.GetComponent<Button>();
-            button.interactable = false;
+            button.interactable = false;*/
+            CardUI(-1, true);
         }
     }
 
@@ -73,20 +103,4 @@ public class PlayerHandPresenter : MonoBehaviour
     {
         interactable = value;
     }
-
-    //public void DrawPressed()
-    //{
-    //    OnDrawPressed?.Invoke();
-    //}
-
-    //public void CloseDeckPressed()
-    //{
-    //    OnCloseDeckPressed?.Invoke();
-    //}
-
-    //public void MarriagePressed(int suitIndex)
-    //{
-    //    Suit suit = (Suit)suitIndex;
-    //    OnMarriagePressed?.Invoke(suit);
-    //}
 }
