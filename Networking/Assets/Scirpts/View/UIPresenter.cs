@@ -23,6 +23,9 @@ public class UIPresenter : MonoBehaviour
     [SerializeField] private GameObject endRoundPanel;
     [SerializeField] private TextMeshProUGUI endRoundText;
 
+    [SerializeField] private Image firstCardImage;
+    [SerializeField] private Image secondCardImage; 
+
     #endregion
 
     [SerializeField] private CardImageDatabase imageDatabase;
@@ -82,6 +85,29 @@ public class UIPresenter : MonoBehaviour
     public void ShowTakenCardsView(bool show)
     {
         takenCardsPanel.SetActive(show);
+    }
+
+    public void ShowTrick(CardData first, CardData second)
+    {
+        if (first != null)
+        {
+            firstCardImage.gameObject.SetActive(true);
+            firstCardImage.sprite = imageDatabase.GetImage(first.cardId);
+        }
+
+        if (second != null)
+        {
+            secondCardImage.gameObject.SetActive(true);
+            secondCardImage.sprite = imageDatabase.GetImage(second.cardId);
+        }
+    }
+
+    public void ClearTrick()
+    {
+        firstCardImage.sprite = null;
+        secondCardImage.sprite = null;
+        firstCardImage.gameObject.SetActive(false);
+        secondCardImage.gameObject.SetActive(false);
     }
 
     public void SetTurnText(int playerId)

@@ -1,4 +1,3 @@
-using Mono.Cecil;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -19,7 +18,6 @@ public class Controller : MonoBehaviour
     private int currentMarriageIndex = 0;
 
     private int localPlayerId = 0;
-
     #endregion
 
     private void Start()
@@ -39,6 +37,7 @@ public class Controller : MonoBehaviour
         server.OnSessionScoreUpdate += HandleScoreUpdate;
         server.OnSessionEnd += HandleSessionEnd;
         server.SendSessionScore();
+        server.OnTrickUpdated += HandleTrickUpdated;
 
         #endregion
 
@@ -128,7 +127,15 @@ public class Controller : MonoBehaviour
         RefreshView();
         UpdateMarriageOptions();
         UpdateButtons();
-        uiPresenter.SetTurnText(playerId);
+        uiPresenter.SetTurnText(localPlayerId);
+    }
+
+    void HandleTrickUpdated(CardData first, CardData second)
+    {
+        if (first == null && second == null)
+            uiPresenter.ClearTrick();
+        else
+            uiPresenter.ShowTrick(first, second);
     }
 
     void HandleTrumpPressed()
@@ -185,8 +192,13 @@ public class Controller : MonoBehaviour
     void StartNextRound()
     {
         uiPresenter.HideRoundEnd();
+
+        showingTakenCards = false;
+
         RefreshView();
         UpdateDrawPileUI();
+        UpdateMarriageOptions();
+        UpdateButtons();
     }
 
     void HandleScoreUpdate(int player1, int player2)
@@ -201,9 +213,9 @@ public class Controller : MonoBehaviour
 
     void UpdateButtons()
     {
-        bool isMyTurn = server.GetActivePlayer() == localPlayerId;
+        bool myTurn = server.GetActivePlayer() == localPlayerId;
 
-        uiPresenter.SetButtonInteractible(isMyTurn, isMyTurn && server.GetDeckCount() > 2, availableMarriages.Count > 0, true);
+        uiPresenter.SetButtonInteractible(myTurn, myTurn && server.GetDeckCount() > 2, myTurn && availableMarriages.Count > 0, myTurn);
     }
 
     void TakenCards()

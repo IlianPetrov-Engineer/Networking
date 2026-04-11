@@ -48,6 +48,8 @@ public class Server
     private int sessionMaxScore = 5;
     private bool deckClosedByPlayer = false;
     private int closingPlayer = -1;
+
+    private int lastTrickWinner = -1;
     #endregion
 
     #region Actions
@@ -62,6 +64,7 @@ public class Server
     public event Action<int, int> OnSessionScoreUpdate;
     public event Action<int> OnSessionEnd;
 
+    public event Action<CardData, CardData> OnTrickUpdated;
     public event Action<string> OnActionRejected;
     #endregion
 
@@ -194,7 +197,7 @@ public class Server
     {
         if (turnPhase != TurnPhase.Drawing)
         {
-            OnActionRejected?.Invoke("You cannot draw a card. It is not your turn.");
+            RejectMessage("Action Rejected: Invalid input.");
             return;
         }
 
@@ -208,10 +211,10 @@ public class Server
                 StartNextTurn();
 
             if (deck.Count > 0)
-                OnActionRejected?.Invoke("You cannot draw a card. The deck is closed.");
+                RejectMessage("Action Rejected: The deck is closed.");
 
             else
-                OnActionRejected?.Invoke("You cannot draw a card. The deck is empty.");
+                RejectMessage("Action Rejected: The deck is empty.");
 
             return;
         }
@@ -237,13 +240,13 @@ public class Server
     {
         if (turnPhase == TurnPhase.Drawing)
         {
-            OnActionRejected?.Invoke("Cannot play card during drawing.");
+            RejectMessage("Action Rejected: Draw a card first.");
             return;
         }
 
         if (playerId != activePlayer)
         {
-            OnActionRejected?.Invoke("It is not your turn");
+            RejectMessage("Action Rejected: Not your turn.");
             return;
         }
 
@@ -262,12 +265,13 @@ public class Server
 
                 if (!validCards)
                 {
-                    OnActionRejected?.Invoke("You do not have a valid marraige.");
+                    RejectMessage("Action Rejected: Not a valid marraige.");
                     return;
                 }
             }
 
             firstPlayedCard = card;
+            OnTrickUpdated?.Invoke(firstPlayedCard, null);
             trickLeader = playerId;
 
             activePlayer = 1 - activePlayer;
@@ -288,22 +292,23 @@ public class Server
 
                 if (hasSameSuit && card.suit != firstPlayedCard.suit)
                 {
-                    OnActionRejected?.Invoke("You must play a card with the same suit as the first card.");
+                    RejectMessage("Action Rejected: You must play a card from the same suit.");
                     return;
                 }
 
                 if (!hasSameSuit && hasTrump && card.suit != trumpCard.suit)
                 {
-                    OnActionRejected?.Invoke("You must play a card from the trump suit.");
+                    RejectMessage("Action Rejected: You must play a card from the trump suit.");
                     return;
                 }
             }
 
             secondPlayedCard = card;
-
+            OnTrickUpdated?.Invoke(firstPlayedCard, secondPlayedCard);
             trickWinner = TrickWinner();
-
             AwardPoints(trickWinner);
+
+            lastTrickWinner = trickWinner;
 
             activePlayer = trickWinner;
             OnTurnChanged?.Invoke(activePlayer);
@@ -327,7 +332,7 @@ public class Server
     {
         if (!CanMarriage(playerId))
         {
-            OnActionRejected?.Invoke("You cannot declare a marraige.");
+            RejectMessage("Action Rejected: You cannot declare a marraige.");
             return;
         }
 
@@ -356,7 +361,10 @@ public class Server
     public bool CanMarriage(int playerId)
     {
         if (turnPhase != TurnPhase.WaitingFirstCard)
+        {
+            RejectMessage("Action Rejected: Not your turn.");
             return false;
+        }
 
         if (playerId != activePlayer)
             return false;
@@ -382,7 +390,7 @@ public class Server
 
         if (deck.Count <= 2)
         {
-            OnActionRejected?.Invoke("Not enough cards to close deck");
+            RejectMessage("Action Rejected: Not enough cards to close deck.");
             return;
         }
 
@@ -396,25 +404,25 @@ public class Server
     {
         if (turnPhase != TurnPhase.WaitingFirstCard)
         {
-            OnActionRejected?.Invoke("You can't exchange the trump card.");
+            RejectMessage("Action Rejected: Invalid input.");
             return;
         }
 
         if (playerId != activePlayer)
         {
-            OnActionRejected?.Invoke("Not your turn.");
+            RejectMessage("Action Rejected: Not your turn.");
             return;
         }
 
         if (deck.Count <= 2)
         {
-            OnActionRejected?.Invoke("Not enough cards to exchange the trump card.");
+            RejectMessage("Action Rejected: Not enough cards to exchange the trump card.");
             return;
         }
 
         if (!canDrawCards)
         {
-            OnActionRejected?.Invoke("Cannot exchange the trump card when the deck is closed.");
+            RejectMessage("Action Rejected: Cannot exchange the trump card when the deck is closed.");
             return;
         }
 
@@ -424,7 +432,7 @@ public class Server
 
         if (nine == null)
         {
-            OnActionRejected?.Invoke("You need the Nine of trump suit to exchange it.");
+            RejectMessage("Action Rejected: You need the Nine of trump suit to exchange it.");
             return;
         }
 
@@ -440,13 +448,13 @@ public class Server
     {
         if (deck.Count != 1)
         {
-            OnActionRejected?.Invoke("Trump can only be taken when it is the last card.");
+            RejectMessage("Action Rejected: Trump can only be taken when it is the last card.");
             return;
         }
 
         if (playerId != activePlayer)
         {
-            OnActionRejected?.Invoke("Not your turn.");
+            RejectMessage("Action Rejected: Not your turn.");
             return;
         }
 
@@ -503,6 +511,7 @@ public class Server
         marriageDeclaredThisTurn = false;
 
         turnPhase = TurnPhase.WaitingFirstCard;
+        OnTrickUpdated?.Invoke(firstPlayedCard, secondPlayedCard);
         OnTurnChanged?.Invoke(activePlayer);
     }
 
@@ -524,7 +533,7 @@ public class Server
     {
         if (GetPoints(playerId) < 66)
         {
-            OnActionRejected?.Invoke("You do not have 66 points.");
+            RejectMessage("Action Rejected: You do not have 66 points.");
             return;
         }
 
@@ -639,7 +648,7 @@ public class Server
         {
             int score = GetPoints(closingPlayer);
 
-            if (score > 66)
+            if (score >= 66)
             {
                 return closingPlayer;
             }
@@ -654,7 +663,7 @@ public class Server
         if (player2Score >= 66)
             return 1;
 
-        return (player1Score > player2Score) ? 0 : 1;
+        return lastTrickWinner;
     }
 
     private int CalculatePoints(int loserScore, bool loserHasTakenCards)
@@ -699,6 +708,11 @@ public class Server
     public void SendSessionScore()
     {
         OnSessionScoreUpdate?.Invoke(player1SessionScore, player2SessionScore);
+    }
+
+    private void RejectMessage(string message)
+    {
+        OnActionRejected?.Invoke(message);
     }
 
     #endregion
