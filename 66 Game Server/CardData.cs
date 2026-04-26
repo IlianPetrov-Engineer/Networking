@@ -1,5 +1,3 @@
-using System;
-
 public enum Suit
 {
     Hearts,
@@ -36,21 +34,8 @@ public class CardData
         this.cardId = cardId;
     }
 
-    public static CardData Deserialize(string data)
+    public string Serialize()
     {
-        string[] parts = data.Split(',');
-
-        Suit suit = Enum.Parse<Suit>(parts[0]);
-        Rank rank = Enum.Parse<Rank>(parts[1]);
-        int points = int.Parse(parts[2]);
-        int power = int.Parse(parts[3]);
-        int cardId = int.Parse(parts[4]);
-
-        return new CardData(suit, rank, points, power, cardId);
+        return $"{suit},{rank},{points},{power},{cardId}";
     }
-
-    //public string Serialize()
-    //{
-    //    return $"{suit},{rank},{points},{power},{cardId}";
-    //}
 }

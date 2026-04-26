@@ -1,11 +1,13 @@
+using Mono.Cecil;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class Controller : MonoBehaviour
 {
     #region Variables
-    [SerializeField] private UnityServer unityServer;
-    private Server server;
+    //[SerializeField] private UnityServer unityServer;
+    //private Server server;
 
     [SerializeField] private PlayerHandPresenter playerView;
     [SerializeField] private PlayerHandPresenter opponentView;
@@ -18,26 +20,41 @@ public class Controller : MonoBehaviour
     private int currentMarriageIndex = 0;
 
     private int localPlayerId = 0;
+
+    [SerializeField] private NetworkClient network;
+
+    List<CardData> myHand = new List<CardData>();
+    int opponentCardCount = 0;
+
+    int activePlayer = 0;
+
+    CardData firstCard;
+    CardData secondCard;
+
     #endregion
 
     private void Start()
     {
-        server = unityServer.server;
+        //server = unityServer.server;
 
         #region ServerMessages
-        server.OnCardPlayed += HandleCardPlayed;
-        server.OnCardDrawn += HandleCardDrawn;
-        server.OnDeckClosed += HandleDeckClosed;
-        server.OnMarriageDeclared += HandleMarriage;
-        server.OnTurnChanged += HandleTurnChanged;
-        server.OnActionRejected += HandleError;
-        server.OnTrumpExchanged += HandleTrumpExchanged;
-        server.OnTrumpTaken += HandleTrumpTaken;
-        server.OnRoundEnd += HandleRoundEnd;
-        server.OnSessionScoreUpdate += HandleScoreUpdate;
-        server.OnSessionEnd += HandleSessionEnd;
-        server.SendSessionScore();
-        server.OnTrickUpdated += HandleTrickUpdated;
+        //server.OnCardPlayed += HandleCardPlayed;
+        //server.OnCardDrawn += HandleCardDrawn;
+        //server.OnDeckClosed += HandleDeckClosed;
+        //server.OnMarriageDeclared += HandleMarriage;
+        //server.OnTurnChanged += HandleTurnChanged;
+        //server.OnActionRejected += HandleError;
+        //server.OnTrumpExchanged += HandleTrumpExchanged;
+        //server.OnTrumpTaken += HandleTrumpTaken;
+        //server.OnRoundEnd += HandleRoundEnd;
+        //server.OnSessionScoreUpdate += HandleScoreUpdate;
+        //server.OnSessionEnd += HandleSessionEnd;
+        //server.SendSessionScore();
+        //server.OnTrickUpdated += HandleTrickUpdated;
+
+        network.Connect();
+
+        network.OnMessageReceived += HandleNetworkMessage;
 
         #endregion
 
@@ -62,50 +79,75 @@ public class Controller : MonoBehaviour
 
     void RefreshView()
     {
-        playerView.UpdateHand(server.GetPlayerHand(localPlayerId));
+        //playerView.UpdateHand(server.GetPlayerHand(localPlayerId));
 
-        int opponentId = 1 - localPlayerId;
-        opponentView.UpdateOpponentHand(server.GetPlayerHand(opponentId).Count);
+        //int opponentId = 1 - localPlayerId;
+        //opponentView.UpdateOpponentHand(server.GetPlayerHand(opponentId).Count);
     }
 
     void LocalPlayer()
     {
-        localPlayerId = server.GetActivePlayer();
+        //localPlayerId = server.GetActivePlayer();
     }
 
     private void OnCardPlayed(int cardId)
     {
-        server.PlayCard(localPlayerId, cardId);
+        network.Send($"PlayCard|{localPlayerId}|{cardId}");
+        //server.PlayCard(localPlayerId, cardId);
     }
 
     public void OnDrawPressed()
     {
-        server.DrawCard();
+        network.Send("Draw");
+        //server.DrawCard();
     }
 
     public void OnCloseDeckPressed()
     {
-        server.CloseDrawingDeck(localPlayerId);
+        network.Send($"CloseDeck|{localPlayerId}");
+        //server.CloseDrawingDeck(localPlayerId);
     }
 
     void UpdateDrawPileUI()
     {
-        uiPresenter.UpdateDrawPile(server.GetDeckCount(), server.trumpCard);
+        //uiPresenter.UpdateDrawPile(server.GetDeckCount(), server.trumpCard);
     }
 
-    void HandleCardPlayed(int playerId, int cardId)
+    void HandleCardPlayed(int playerId, CardData card)
     {
-        RefreshView(); //temp
-        UpdateMarriageOptions();
-        UpdateButtons();
+        if (playerId == localPlayerId)
+        {
+            myHand.RemoveAll(c => c.cardId == card.cardId);
+            playerView.UpdateHand(myHand);
+        }
+        else
+        {
+            opponentCardCount--;
+            opponentView.UpdateOpponentHand(opponentCardCount);
+        }
+
+        //RefreshView(); //temp
+        //UpdateMarriageOptions();
+        //UpdateButtons();
     }
 
-    void HandleCardDrawn(int playerId)
+    void HandleCardDrawn(int playerId, CardData card)
     {
-        RefreshView();
-        UpdateMarriageOptions();
-        UpdateButtons();
-        UpdateDrawPileUI();
+        if (playerId == localPlayerId)
+        {
+            myHand.Add(card);
+            playerView.UpdateHand(myHand);
+        }
+        else
+        {
+            opponentCardCount++;
+            opponentView.UpdateOpponentHand(opponentCardCount);
+        }
+
+        //RefreshView();
+        //UpdateMarriageOptions();
+        //UpdateButtons();
+        //UpdateDrawPileUI();
     }
 
     void HandleDeckClosed(int playerId)
@@ -123,11 +165,19 @@ public class Controller : MonoBehaviour
 
     void HandleTurnChanged(int playerId)
     {
-        LocalPlayer();
-        RefreshView();
-        UpdateMarriageOptions();
+        activePlayer = playerId;
+
+        uiPresenter.SetTurnText(activePlayer == localPlayerId ? localPlayerId : activePlayer);
+
+        //uiPresenter.SetTurnText(playerId);
+
         UpdateButtons();
-        uiPresenter.SetTurnText(localPlayerId);
+
+        //LocalPlayer();
+        //RefreshView();
+        //UpdateMarriageOptions();
+        //UpdateButtons();
+        //uiPresenter.SetTurnText(localPlayerId);
     }
 
     void HandleTrickUpdated(CardData first, CardData second)
@@ -140,17 +190,19 @@ public class Controller : MonoBehaviour
 
     void HandleTrumpPressed()
     {
-        int deckCount = server.GetDeckCount();
+        /*int deckCount = server.GetDeckCount();
 
         if (deckCount > 2 && server.canDrawCards)
         {
-            server.ExchangeTrump(localPlayerId);
+            network.Send($"ExchangeTrump|{localPlayerId}");
+            //server.ExchangeTrump(localPlayerId);
         }
 
         else if (deckCount == 1)
         {
-            server.TakeTrump(localPlayerId);
-        }
+            network.Send($"TakeTrump|{localPlayerId}");
+            //server.TakeTrump(localPlayerId);
+        }*/
     }
 
     void HandleTrumpExchanged(int playerId)
@@ -170,17 +222,19 @@ public class Controller : MonoBehaviour
         if (availableMarriages.Count == 0)
             return;
 
-        server.DeclareMarriage(localPlayerId, availableMarriages[currentMarriageIndex]);
+        network.Send($"DeclareMarriage|{localPlayerId}|{availableMarriages[currentMarriageIndex]}");
+        //server.DeclareMarriage(localPlayerId, availableMarriages[currentMarriageIndex]);
     }
 
     void HandleWin()
     {
-        int points = server.GetPoints(localPlayerId);
+        /*int points = server.GetPoints(localPlayerId);
 
         if (points < 66)
-            return;
+            return;*/
 
-        server.ForceRoundEnd(localPlayerId);
+        network.Send($"DeclareWin|{localPlayerId}");
+        //server.ForceRoundEnd(localPlayerId);
     }
 
     void HandleRoundEnd(int winner)
@@ -213,9 +267,13 @@ public class Controller : MonoBehaviour
 
     void UpdateButtons()
     {
-        bool myTurn = server.GetActivePlayer() == localPlayerId;
+        bool myTurn = activePlayer == localPlayerId;
 
-        uiPresenter.SetButtonInteractible(myTurn, myTurn && server.GetDeckCount() > 2, myTurn && availableMarriages.Count > 0, myTurn);
+        uiPresenter.SetButtonInteractible(myTurn, myTurn, false,myTurn);
+
+        //bool myTurn = server.GetActivePlayer() == localPlayerId;
+
+        //uiPresenter.SetButtonInteractible(myTurn, myTurn && server.GetDeckCount() > 2, myTurn && availableMarriages.Count > 0, myTurn);
     }
 
     void TakenCards()
@@ -226,7 +284,7 @@ public class Controller : MonoBehaviour
         {
             uiPresenter.ShowTakenCardsView(true);
             takenCards.SetInteractable(false);
-            takenCards.UpdateHand(server.GetTakenCards(localPlayerId));
+            //takenCards.UpdateHand(server.GetTakenCards(localPlayerId));
             uiPresenter.SetButtonInteractible(false, false, false, false);
         }
 
@@ -241,7 +299,7 @@ public class Controller : MonoBehaviour
 
     void UpdateMarriageOptions()
     {
-        availableMarriages = server.GetAvailableMarriages(localPlayerId);
+        //availableMarriages = server.GetAvailableMarriages(localPlayerId);
 
         if (availableMarriages.Count == 0)
         {
@@ -259,5 +317,76 @@ public class Controller : MonoBehaviour
     void HandleError(string error)
     {
         Debug.Log(error);
+    }
+
+    void HandleNetworkMessage(string msg)
+    {
+        string[] parts = msg.Split('|');
+
+        switch (parts[0])
+        {
+            case "AssignPlayer":
+                localPlayerId = int.Parse(parts[1]);
+                Debug.Log($"Assigned player: {localPlayerId}");
+                break;
+
+            case "InitialHand":
+                myHand.Clear();
+
+                string[] cards = parts[1].Split(';');
+
+                foreach (var c in cards)
+                {
+                    CardData card = CardData.Deserialize(c);
+                    myHand.Add(card);
+                }
+
+                playerView.UpdateHand(myHand);
+
+                opponentCardCount = myHand.Count;
+                opponentView.UpdateOpponentHand(opponentCardCount);
+
+                break;
+
+            case "TrickUpdate":
+
+                firstCard = parts[1] != "null" ? CardData.Deserialize(parts[1]) : null;
+                secondCard = parts[2] != "null" ? CardData.Deserialize(parts[2]) : null;
+
+                if (firstCard == null && secondCard == null)
+                    uiPresenter.ClearTrick();
+                else
+                    uiPresenter.ShowTrick(firstCard, secondCard);
+
+                break;
+
+            case "CardPlayed":
+                HandleCardPlayed(int.Parse(parts[1]), CardData.Deserialize(parts[2]));
+                break;
+
+            case "TurnChanged":
+                HandleTurnChanged(int.Parse(parts[1]));
+                break;
+
+            case "CardDrawn":
+                HandleCardDrawn(int.Parse(parts[1]), CardData.Deserialize(parts[2]));
+                break;
+
+            case "DeckClosed":
+                HandleDeckClosed(int.Parse(parts[1]));
+                break;
+
+            case "MarriageDeclared":
+                HandleMarriage(int.Parse(parts[1]), Enum.Parse<Suit>(parts[2]));
+                break;
+
+            case "Error":
+                Debug.Log(parts[1]);
+                break;
+
+            case "GameStarted":
+                Debug.Log("Game Started");
+                break;
+        }
     }
 }
