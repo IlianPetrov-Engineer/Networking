@@ -283,7 +283,6 @@ GameObject:
   - component: {fileID: 121175018}
   - component: {fileID: 121175019}
   - component: {fileID: 121175020}
-  - component: {fileID: 121175021}
   m_Layer: 0
   m_Name: Client
   m_TagString: Untagged
@@ -336,7 +335,6 @@ MonoBehaviour:
   opponentView: {fileID: 62247393}
   takenCards: {fileID: 364228142}
   uiPresenter: {fileID: 121175020}
-  network: {fileID: 121175021}
 --- !u!114 &121175020
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -367,18 +365,6 @@ MonoBehaviour:
   secondCardImage: {fileID: 929939245}
   imageDatabase: {fileID: 1374979766}
   takenCardsPanel: {fileID: 1907427381}
---- !u!114 &121175021
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 121175015}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8f1229643d3ed2e45b6d6366c18d98aa, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NetworkClient
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -586,7 +572,7 @@ MonoBehaviour:
     m_Top: -135
     m_Bottom: 0
   m_ChildAlignment: 0
-  m_StartCorner: 1
+  m_StartCorner: 0
   m_StartAxis: 0
   m_CellSize: {x: 125, y: 175}
   m_Spacing: {x: 0, y: 0}

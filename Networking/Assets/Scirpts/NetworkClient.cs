@@ -10,11 +10,30 @@ public class NetworkClient : MonoBehaviour
     TcpClient client;
     NetworkStream stream;
 
+    public static NetworkClient Instance;
+
     public Action<string> OnMessageReceived;
     ConcurrentQueue<string> messageQueue = new ConcurrentQueue<string>();
 
+    private void Awake()
+    {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        Instance = this;
+
+        DontDestroyOnLoad(gameObject);
+    }
+
     public void Connect()
     {
+        if (client != null && client.Connected)
+            return;
+
+
         client = new TcpClient();
         client.Connect("127.0.0.1", 50011);
 
@@ -28,15 +47,36 @@ public class NetworkClient : MonoBehaviour
     {
         byte[] buffer = new byte[1024];
 
+        StringBuilder incoming = new StringBuilder();
+
         while (true)
         {
             int bytes = stream.Read(buffer, 0, buffer.Length);
 
             if (bytes == 0) continue;
 
-            string msg = Encoding.UTF8.GetString(buffer, 0, bytes);
+            incoming.Append(Encoding.UTF8.GetString(buffer, 0, bytes));
 
-            messageQueue.Enqueue(msg);
+            string content = incoming.ToString();
+
+            int newlineIndex;
+
+            while ((newlineIndex = content.IndexOf('\n')) != -1)
+            {
+                string fullMessage = content.Substring(0, newlineIndex).Trim();
+
+                if (!string.IsNullOrEmpty(fullMessage))
+                 messageQueue.Enqueue(fullMessage);
+
+                content = content.Substring(newlineIndex + 1);
+            }
+
+            incoming.Clear();
+            incoming.Append(content);
+
+            /*string msg = Encoding.UTF8.GetString(buffer, 0, bytes);
+
+            messageQueue.Enqueue(msg);*/
         }
     }
 

@@ -21,7 +21,7 @@ public class Controller : MonoBehaviour
 
     private int localPlayerId = 0;
 
-    [SerializeField] private NetworkClient network;
+    private NetworkClient network;
 
     List<CardData> myHand = new List<CardData>();
     int opponentCardCount = 0;
@@ -30,6 +30,12 @@ public class Controller : MonoBehaviour
 
     CardData firstCard;
     CardData secondCard;
+
+    private List<CardData> myTakenCards = new();
+
+    private int deckCount;
+    private bool canDrawCards;
+    private CardData trumpCard;
 
     #endregion
 
@@ -52,9 +58,16 @@ public class Controller : MonoBehaviour
         //server.SendSessionScore();
         //server.OnTrickUpdated += HandleTrickUpdated;
 
-        network.Connect();
-
+        //network.Connect();
+        Debug.Log("Controller Start");
+        network = NetworkClient.Instance;
         network.OnMessageReceived += HandleNetworkMessage;
+        network.Send("Ready");
+        if (network == null)
+        {
+            Debug.LogError("NETWORK IS NULL");
+            return;
+        }
 
         #endregion
 
@@ -69,7 +82,8 @@ public class Controller : MonoBehaviour
 
         #endregion
 
-        uiPresenter.SetTurnText(localPlayerId);
+        //uiPresenter.SetTurnText(localPlayerId);
+        uiPresenter.SetTurnText(activePlayer, localPlayerId);
 
         LocalPlayer();
         RefreshView();
@@ -92,6 +106,7 @@ public class Controller : MonoBehaviour
 
     private void OnCardPlayed(int cardId)
     {
+        Debug.Log($"Sending PlayCard {localPlayerId} {cardId}");
         network.Send($"PlayCard|{localPlayerId}|{cardId}");
         //server.PlayCard(localPlayerId, cardId);
     }
@@ -167,7 +182,9 @@ public class Controller : MonoBehaviour
     {
         activePlayer = playerId;
 
-        uiPresenter.SetTurnText(activePlayer == localPlayerId ? localPlayerId : activePlayer);
+        uiPresenter.SetTurnText(activePlayer, localPlayerId);
+
+        //uiPresenter.SetTurnText(activePlayer == localPlayerId ? localPlayerId : activePlayer);
 
         //uiPresenter.SetTurnText(playerId);
 
@@ -190,6 +207,22 @@ public class Controller : MonoBehaviour
 
     void HandleTrumpPressed()
     {
+        bool myTurn = activePlayer == localPlayerId;
+
+        if (!myTurn)
+            return;
+
+        if (deckCount > 2 && canDrawCards)
+        {
+            bool hasTrumpNine = myHand.Exists(card => card.rank == Rank.Nine && card.suit == trumpCard.suit);
+
+            if (hasTrumpNine)
+                network.Send($"ExchangeTrump|{localPlayerId}");
+        }
+
+        else if (deckCount == 1)
+            network.Send($"TakeTrump|{localPlayerId}");
+
         /*int deckCount = server.GetDeckCount();
 
         if (deckCount > 2 && server.canDrawCards)
@@ -269,7 +302,11 @@ public class Controller : MonoBehaviour
     {
         bool myTurn = activePlayer == localPlayerId;
 
-        uiPresenter.SetButtonInteractible(myTurn, myTurn, false,myTurn);
+        bool canMarriage = myTurn && availableMarriages.Count > 0;
+
+        uiPresenter.SetButtonInteractible(myTurn, myTurn, canMarriage, myTurn);
+
+        //uiPresenter.SetButtonInteractible(myTurn, myTurn, false,myTurn);
 
         //bool myTurn = server.GetActivePlayer() == localPlayerId;
 
@@ -284,6 +321,8 @@ public class Controller : MonoBehaviour
         {
             uiPresenter.ShowTakenCardsView(true);
             takenCards.SetInteractable(false);
+            Debug.Log($"Updating taken cards UI with {myTakenCards.Count} cards");
+            takenCards.UpdateHand(myTakenCards);
             //takenCards.UpdateHand(server.GetTakenCards(localPlayerId));
             uiPresenter.SetButtonInteractible(false, false, false, false);
         }
@@ -321,6 +360,8 @@ public class Controller : MonoBehaviour
 
     void HandleNetworkMessage(string msg)
     {
+        Debug.Log($"RAW MESSAGE: {msg}");
+
         string[] parts = msg.Split('|');
 
         switch (parts[0])
@@ -386,6 +427,73 @@ public class Controller : MonoBehaviour
 
             case "GameStarted":
                 Debug.Log("Game Started");
+                break;
+
+            case "TrumpCard":
+
+                trumpCard = CardData.Deserialize(parts[1]);
+
+                uiPresenter.SetTrumpCard(trumpCard);
+
+                break;
+
+            case "DeckCount":
+
+                deckCount = int.Parse(parts[1]);
+                uiPresenter.SetDeckCount(int.Parse(parts[1]));
+
+                break;
+
+            case "ScoreUpdate":
+
+                HandleScoreUpdate(
+                    int.Parse(parts[1]),
+                    int.Parse(parts[2])
+                );
+
+                break;
+
+            case "TakenCards":
+
+                int winner = int.Parse(parts[1]);
+
+                CardData c1 = CardData.Deserialize(parts[2]);
+                CardData c2 = CardData.Deserialize(parts[3]);
+
+                if (winner == localPlayerId)
+                {
+                    myTakenCards.Add(c1);
+                    myTakenCards.Add(c2);
+                    Debug.Log($"Taken cards count: {myTakenCards.Count}");
+                }
+
+                break;
+
+            case "CanDraw":
+
+                canDrawCards = bool.Parse(parts[1]);
+
+                break;
+
+            case "MarriageOptions":
+
+                availableMarriages.Clear();
+
+                if (!string.IsNullOrEmpty(parts[1]))
+                {
+                    string[] suits = parts[1].Split(',');
+
+                    foreach (string suit in suits)
+                    {
+                        availableMarriages.Add(
+                            Enum.Parse<Suit>(suit)
+                        );
+                    }
+                }
+
+                UpdateMarriageOptions();
+                UpdateButtons();
+
                 break;
         }
     }

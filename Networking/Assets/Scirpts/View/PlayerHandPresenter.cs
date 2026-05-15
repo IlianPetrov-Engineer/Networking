@@ -52,6 +52,7 @@ public class PlayerHandPresenter : MonoBehaviour
 
         foreach (CardData card in hand)
         {
+            Debug.Log($"Creating taken card {card.cardId}");
             /*GameObject cardUI = Instantiate(cardPrefab, content);
             spawnedCards.Add(cardUI);
 
@@ -94,7 +95,7 @@ public class PlayerHandPresenter : MonoBehaviour
     private void Clear()
     {
         foreach (GameObject card in spawnedCards)
-            Destroy(card);
+            DestroyImmediate(card);
 
         spawnedCards.Clear();
     }

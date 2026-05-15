@@ -99,3 +99,6 @@ InitTestScene*.unity*
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
 Networking/Library
 Networking/obj
+Networking/Temp
+66 Game Server/obj
+66 Game Server/bin

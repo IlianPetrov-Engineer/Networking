@@ -110,9 +110,9 @@ public class UIPresenter : MonoBehaviour
         secondCardImage.gameObject.SetActive(false);
     }
 
-    public void SetTurnText(int playerId)
+    public void SetTurnText(int activePlayer, int localPlayer)
     {
-        currentPlayerText.text = $"Player {playerId + 1} Turn. \n You are player {playerId + 1}";
+        currentPlayerText.text = $"Player {activePlayer + 1} Turn.\nYou are player {localPlayer + 1}";
     }
 
     public void SetScore(int p1, int p2)
@@ -129,5 +129,16 @@ public class UIPresenter : MonoBehaviour
     public void HideRoundEnd()
     {
         endRoundPanel.SetActive(false);
+    }
+
+    public void SetTrumpCard(CardData card)
+    {
+        trumpCardImage.sprite =
+            imageDatabase.GetImage(card.cardId);
+    }
+
+    public void SetDeckCount(int count)
+    {
+        remainingCardsText.text = $"Remaining Cards: {count.ToString()}";
     }
 }

@@ -18,6 +18,8 @@ class Program
 
     static bool gameStarted = false;
 
+    static int readyClients = 0;
+
     static void Main()
     {
         StartServer(50011);
@@ -37,9 +39,10 @@ class Program
         // we keep them in a list:
         ///List<TcpClient> clients = new List<TcpClient>();
         ///
+
         gameServer.OnCardPlayed += (player, card) =>
         {
-            SendToAllClients($"CardPlayed|{player}|{card}|{card.Serialize()}");
+            SendToAllClients($"CardPlayed|{player}|{card.Serialize()}");
         };
 
         gameServer.OnTurnChanged += (player) =>
@@ -64,7 +67,9 @@ class Program
 
         gameServer.OnTrumpExchanged += (player) =>
         {
-            SendToAllClients($"TrumpExchanged|{player}");
+            SendToAllClients($"TrumpCard|{gameServer.trumpCard.Serialize()}");
+            SendToAllClients($"DeckCount|{gameServer.GetDeckCount()}");
+            SendPlayerHand(player);
         };
 
         gameServer.OnTrumpTaken += (player) =>
@@ -77,9 +82,9 @@ class Program
             SendToAllClients($"RoundEnd|{winner}");
         };
 
-        gameServer.OnSessionScoreUpdate += (p1, p2) =>
+        gameServer.OnSessionScoreUpdate += (player1, player2) =>
         {
-            SendToAllClients($"ScoreUpdate|{p1}|{p2}");
+            SendToAllClients($"ScoreUpdate|{player1}|{player2}");
         };
 
         gameServer.OnActionRejected += (msg) =>
@@ -87,12 +92,23 @@ class Program
             SendToAllClients($"Error|{msg}");
         };
 
-        gameServer.OnTrickUpdated += (c1, c2) =>
+        gameServer.OnTrickUpdated += (card1, card2) =>
         {
-            string id1 = c1 != null ? c1.Serialize() : "null";
-            string id2 = c2 != null ? c2.Serialize() : "null";
+            string id1 = card1 != null ? card1.Serialize() : "null";
+            string id2 = card2 != null ? card2.Serialize() : "null";
 
             SendToAllClients($"TrickUpdate|{id1}|{id2}");
+        };
+
+        gameServer.OnMarriageOptionsUpdated += (player, options) =>
+        {
+            SendToClient(clients[player], $"MarriageOptions|{options}");
+        };
+
+        gameServer.OnCardsTaken += (winner, card1, card2) =>
+        {
+            SendToAllClients($"TakenCards|" + $"{winner}|" + $"{card1.Serialize()}|" + $"{card2.Serialize()}"
+            );
         };
 
         while (true)
@@ -139,11 +155,12 @@ class Program
 
             gameServer.StartGame();
 
-            SendToClient(clients[0], "AssignPlayer|0");
-            SendToClient(clients[1], "AssignPlayer|1");
+            //SendToClient(clients[0], "AssignPlayer|0");
+            //SendToClient(clients[1], "AssignPlayer|1");
 
             SendToAllClients("GameStarted");
-            SendInitialHands();
+            //Thread.Sleep(1000);
+            //SendInitialHands();
         }
     }
 
@@ -161,9 +178,19 @@ class Program
         SendToAllClients($"TurnChanged|{gameServer.GetActivePlayer()}");
     }
 
+    static void SendPlayerHand(int player)
+    {
+        var hand = gameServer.GetPlayerHand(player);
+
+        string cards =
+            string.Join(";", hand.ConvertAll(c => c.Serialize()));
+
+        SendToClient(clients[player], $"InitialHand|{cards}");
+    }
+
     static void SendToClient(TcpClient client, string msg)
     {
-        byte[] data = Encoding.UTF8.GetBytes(msg);
+        byte[] data = Encoding.UTF8.GetBytes(msg + "\n");
         client.GetStream().Write(data, 0, data.Length);
     }
 
@@ -227,6 +254,7 @@ class Program
         switch (parts[0])
         {
             case "PlayCard":
+                Console.WriteLine(message);
                 int player = int.Parse(parts[1]);
                 int cardId = int.Parse(parts[2]);
                 gameServer.PlayCard(player, cardId);
@@ -234,6 +262,7 @@ class Program
 
             case "Draw":
                 gameServer.DrawCard();
+                SendToAllClients($"DeckCount|{gameServer.GetDeckCount()}");
                 break;
 
             case "CloseDeck":
@@ -241,10 +270,7 @@ class Program
                 break;
 
             case "DeclareMarriage":
-                gameServer.DeclareMarriage(
-                    int.Parse(parts[1]),
-                    Enum.Parse<Suit>(parts[2])
-                );
+                gameServer.DeclareMarriage(int.Parse(parts[1]), Enum.Parse<Suit>(parts[2]));
                 break;
 
             case "ExchangeTrump":
@@ -258,12 +284,34 @@ class Program
             case "DeclareWin":
                 gameServer.ForceRoundEnd(int.Parse(parts[1]));
                 break;
+
+            case "Ready":
+
+                readyClients++;
+
+                Console.WriteLine($"Client ready {readyClients}/2");
+
+                if (readyClients == 2)
+                {
+                    SendToClient(clients[0], "AssignPlayer|0");
+                    SendToClient(clients[1], "AssignPlayer|1");
+
+                    SendInitialHands();
+
+                    SendToAllClients($"TurnChanged|{gameServer.GetActivePlayer()}");
+                    SendToAllClients($"TrumpCard|{gameServer.trumpCard.Serialize()}");
+                    SendToAllClients($"DeckCount|{gameServer.GetDeckCount()}");
+                    SendToAllClients($"CanDraw|{gameServer.canDrawCards}");
+                    gameServer.SendSessionScore();
+                }
+
+                break;
         }
     }
 
     static void SendToAllClients(string msg)
     {
-        byte[] data = Encoding.UTF8.GetBytes(msg);
+        byte[] data = Encoding.UTF8.GetBytes(msg + "\n");
 
         foreach (var client in clients)
         {
@@ -332,12 +380,14 @@ public class Server
     public event Action<int, CardData> OnCardDrawn;
     public event Action<int> OnDeckClosed;
     public event Action<int, Suit> OnMarriageDeclared;
+    public event Action<int, string> OnMarriageOptionsUpdated;
     public event Action<int> OnTurnChanged;
     public event Action<int> OnTrumpExchanged;
     public event Action<int> OnTrumpTaken;
     public event Action<int> OnRoundEnd;
     public event Action<int, int> OnSessionScoreUpdate;
     public event Action<int> OnSessionEnd;
+    public event Action<int, CardData, CardData> OnCardsTaken;
 
     public event Action<CardData, CardData> OnTrickUpdated;
     public event Action<string> OnActionRejected;
@@ -554,6 +604,7 @@ public class Server
             activePlayer = 1 - activePlayer;
             OnTurnChanged?.Invoke(activePlayer);
             turnPhase = TurnPhase.WaitingSecondCard;
+
         }
 
         else if (turnPhase == TurnPhase.WaitingSecondCard)
@@ -584,6 +635,7 @@ public class Server
             OnTrickUpdated?.Invoke(firstPlayedCard, secondPlayedCard);
             trickWinner = TrickWinner();
             AwardPoints(trickWinner);
+            OnCardsTaken?.Invoke(trickWinner, firstPlayedCard, secondPlayedCard);
 
             lastTrickWinner = trickWinner;
 
@@ -749,13 +801,35 @@ public class Server
     #region ServerCalculations
     private int TrickWinner()
     {
-        if (firstPlayedCard.power > secondPlayedCard.power)
+        bool firstTrump = firstPlayedCard.suit == trumpCard.suit;
+        bool secondTrump = secondPlayedCard.suit == trumpCard.suit;
+
+        // Trump beats non-trump
+        if (firstTrump && !secondTrump)
             return trickLeader;
 
-        if (secondPlayedCard.power > firstPlayedCard.power)
+        if (secondTrump && !firstTrump)
             return 1 - trickLeader;
 
+        // Same suit -> compare power
+        if (firstPlayedCard.suit == secondPlayedCard.suit)
+        {
+            if (firstPlayedCard.power > secondPlayedCard.power)
+                return trickLeader;
+
+            return 1 - trickLeader;
+        }
+
+        // Different suits and no trump -> first player wins
         return trickLeader;
+
+        //if (firstPlayedCard.power > secondPlayedCard.power)
+        //    return trickLeader;
+
+        //if (secondPlayedCard.power > firstPlayedCard.power)
+        //    return 1 - trickLeader;
+
+        //return trickLeader;
     }
 
     private void AwardPoints(int winner)
@@ -790,6 +864,7 @@ public class Server
         turnPhase = TurnPhase.WaitingFirstCard;
         OnTrickUpdated?.Invoke(firstPlayedCard, secondPlayedCard);
         OnTurnChanged?.Invoke(activePlayer);
+        SendMarriageOptions();
     }
 
     private void CheckGameEnd()
@@ -992,6 +1067,22 @@ public class Server
         OnActionRejected?.Invoke(message);
     }
 
-    #endregion
+    private void SendMarriageOptions()
+    {
+        List<string> marriages = new();
 
+        List<CardData> hand = GetPlayerHand(activePlayer);
+
+        foreach (Suit suit in Enum.GetValues(typeof(Suit)))
+        {
+            if (HasMarriage(hand, suit))
+                marriages.Add(suit.ToString());
+        }
+
+        string joined = string.Join(",", marriages);
+
+        OnMarriageOptionsUpdated?.Invoke(activePlayer, joined);
+    }
+
+    #endregion
 }
